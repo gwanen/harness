@@ -175,3 +175,52 @@ test('Claude Code accepts a stopped turn.step without dispatching downstream', a
   expect(result.answer).toContain('usage-credit-guard')
   expect(result.usage).toBe(null)
 })
+
+test('session start shows current known usage persistently and continues lifecycle', async () => {
+  const hooks = handlers()
+  let status
+  let continued = false
+  const $ = {
+    session: { usage: async () => limits(42, 18) },
+    ui: { status: text => { status = text } },
+  }
+  await hooks['session.start']($, {}, async () => { continued = true; return { ok: true } })
+  expect(status).toBe('Guard active · 5h: 42% · weekly: 18%')
+  expect(continued).toBe(true)
+})
+
+test('status preserves a below-threshold decimal without claiming approval is required', async () => {
+  const hooks = handlers()
+  let status
+  const $ = {
+    session: { usage: async () => limits(99.9, 18) },
+    ui: { status: text => { status = text } },
+  }
+  await hooks['session.start']($, {}, async () => ({}))
+  expect(status).toBe('Guard active · 5h: 99.9% · weekly: 18%')
+})
+
+test('session start shows unknown usage and approval requirement when usage fails', async () => {
+  const hooks = handlers()
+  let status
+  const $ = {
+    session: { usage: async () => { throw new Error('unavailable') } },
+    ui: { status: text => { status = text } },
+  }
+  await hooks['session.start']($, {}, async () => ({}))
+  expect(status).toBe('Guard active · 5h: ? · weekly: ? · approval required')
+})
+
+test('session measure updates status and display errors do not block lifecycle', async () => {
+  const hooks = handlers()
+  const shown = []
+  const $ = { ui: { status: text => shown.push(text) } }
+  let continued = false
+  await hooks['session.measure']($, { rateLimits: limits(100, 30).rateLimits }, async () => { continued = true; return {} })
+  expect(shown[0]).toBe('Guard active · 5h: 100% · weekly: 30% · approval required')
+  expect(continued).toBe(true)
+
+  const failingUi = { ui: { status: () => Promise.reject(new Error('display unavailable')) } }
+  await hooks['session.measure'](failingUi, { rateLimits: limits(55, 67).rateLimits }, async () => ({ ok: true }))
+  expect(true).toBe(true)
+})

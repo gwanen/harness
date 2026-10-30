@@ -44,6 +44,34 @@ function resetReason(reason, relevant) {
   return resetTimes.length ? `${reason}; ${resetTimes.join('; ')}` : reason
 }
 
+function usageStatus(rateLimits) {
+  const fiveHour = Array.isArray(rateLimits) ? rateLimits.find(limit => limit?.kind === 'five_hour') : undefined
+  const sevenDay = Array.isArray(rateLimits) ? rateLimits.find(limit => limit?.kind === 'seven_day') : undefined
+  const five = fiveHour?.percentUsed
+  const seven = sevenDay?.percentUsed
+  const display = value => Number.isFinite(value) && value >= 0 ? `${value}%` : '?'
+  const approvalRequired = !Number.isFinite(five) || five < 0 || !Number.isFinite(seven) || seven < 0 || five >= 100 || seven >= 100
+  return `Guard active · 5h: ${display(five)} · weekly: ${display(seven)}${approvalRequired ? ' · approval required' : ''}`
+}
+
+function showUsageStatus($, rateLimits) {
+  try {
+    const result = $.ui.status(usageStatus(rateLimits))
+    if (result && typeof result.catch === 'function') result.catch(() => {})
+  } catch {
+    // Display failures must not affect session lifecycle or request gates.
+  }
+}
+
+async function showInitialUsageStatus($) {
+  try {
+    const usage = await $.session.usage()
+    showUsageStatus($, usage?.rateLimits)
+  } catch {
+    showUsageStatus($, undefined)
+  }
+}
+
 async function allowBlocked($, reason, description) {
   try {
     const answer = await $.ui.ask(
@@ -57,6 +85,16 @@ async function allowBlocked($, reason, description) {
 }
 
 export function register(on) {
+  on('session.start', async ($, e, next) => {
+    await showInitialUsageStatus($)
+    return next(e)
+  })
+
+  on('session.measure', ($, e, next) => {
+    showUsageStatus($, e.rateLimits)
+    return next(e)
+  })
+
   on('turn.step', async function* ($, e, next) {
     let usage
     try {
