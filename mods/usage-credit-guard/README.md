@@ -7,7 +7,7 @@ Usage Credit Guard checks Claude Code's reported usage before selected model req
 Run this once in your terminal (Claude Code 2.1.292 or later):
 
 ```sh
-claude plugin install usage-credit-guard --marketplace sultanfariz/harness --scope user
+claude plugin marketplace add sultanfariz/harness && claude plugin install usage-credit-guard@harness --scope user
 ```
 
 This downloads the mod and enables it across your projects. Start a new Claude Code session, or run `/reload-plugins` in an existing one. You do not need a manual clone or `--plugin-dir` after installation. The command requires the marketplace manifest and plugin to be merged into the repository's default branch; private repositories also require access.
