@@ -1,0 +1,5 @@
+{
+  "name": "usage-credit-guard",
+  "version": "0.1.0",
+  "description": "Require human approval for Claude model requests when usage is exhausted or unavailable"
+}

@@ -1,0 +1,4 @@
+{
+  "description": "Usage credit guard",
+  "modules": ["./register.js"]
+}

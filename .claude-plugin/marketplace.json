@@ -1,0 +1,13 @@
+{
+  "name": "harness",
+  "owner": {
+    "name": "sultanfariz"
+  },
+  "description": "Claude Code mods from sultanfariz.",
+  "plugins": [
+    {
+      "name": "usage-credit-guard",
+      "source": "./mods/usage-credit-guard"
+    }
+  ]
+}
