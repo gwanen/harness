@@ -2,15 +2,34 @@
 
 Usage Credit Guard checks Claude Code's reported usage before selected model requests. When either the five-hour or seven-day usage window is at or above 100%, it pauses the pending request and asks what to do. It also asks when usage data is unavailable.
 
-## Load the local plugin
+## Install
 
-From the `mods/` directory, start the `.claudeb` instance with the local plugin directory:
+Run this once in your terminal (Claude Code 2.1.292 or later):
 
 ```sh
-CLAUDE_CONFIG_DIR="$HOME/.claudeb" "$HOME/.local/bin/claude" --plugin-dir "$PWD/usage-credit-guard"
+claude plugin install usage-credit-guard --marketplace sultanfariz/harness --scope user
 ```
 
-This loads the local plugin for that invocation only. It does not install the plugin or change settings. There is no slash command and no persistent approval setting. Start future `.claudeb` sessions with the same `--plugin-dir` option.
+This downloads the mod and enables it across your projects. Start a new Claude Code session, or run `/reload-plugins` in an existing one. You do not need a manual clone or `--plugin-dir` after installation. The command requires the marketplace manifest and plugin to be merged into the repository's default branch; private repositories also require access.
+
+Inside Claude Code, run `/plugin install usage-credit-guard --marketplace sultanfariz/harness` and choose **Install for you**. To install into a separate profile, use that profile's launcher; for example, run `claudeb plugin install usage-credit-guard --marketplace sultanfariz/harness --scope user` in a shell where the `claudeb` alias is defined.
+
+To update the installed copy:
+
+```sh
+claude plugin marketplace update harness
+claude plugin update usage-credit-guard@harness
+```
+
+## Develop a local copy
+
+From the `mods/` directory, load your working copy for one session:
+
+```sh
+claude --plugin-dir "$PWD/usage-credit-guard"
+```
+
+For the `.claudeb` profile, replace `claude` with `claudeb`. This flag is for local development; installed users can start Claude normally. Spending approvals remain request-scoped and are never saved as a permanent exception.
 
 ## Approval behavior
 
@@ -44,7 +63,7 @@ In the interactive session, run `/plugin`. The header’s `mods active` line sho
 To check whether the current CLI process can load mods without starting a session, run this from the `mods/` directory (which has no hooks module of its own):
 
 ```sh
-CLAUDE_CONFIG_DIR="$HOME/.claudeb" "$HOME/.local/bin/claude" plugin test
+claude plugin test
 ```
 
 `no hooks module to load` means mods are enabled and there is no mod in the current directory to test; it does not by itself confirm that this plugin loaded. A message saying hooks modules are turned off points to `disableAllHooks` or an organization policy. A rollout-switch message means mods were turned off remotely. `--safe-mode` disables installed plugins, and an organization may allow only managed mods. For load errors, check the Errors tab in `/plugin`.
@@ -56,8 +75,9 @@ For hard protection against charges, turn off paid usage credits or extra usage 
 From the repository root:
 
 ```sh
-claude plugin validate ./usage-credit-guard
-claude plugin test ./usage-credit-guard
+claude plugin validate .
+claude plugin validate ./mods/usage-credit-guard
+claude plugin test ./mods/usage-credit-guard
 ```
 
 These commands validate the plugin structure and run its local mod tests.
