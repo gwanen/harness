@@ -7,7 +7,7 @@ Personal agent tooling and Claude Code extensions.
 Run this once in your terminal (Claude Code 2.1.292 or later):
 
 ```sh
-claude plugin install usage-credit-guard --marketplace sultanfariz/harness --scope user
+claude plugin marketplace add sultanfariz/harness && claude plugin install usage-credit-guard@harness --scope user
 ```
 
 Claude Code downloads the mod and enables it for your user across projects. No manual clone or `--plugin-dir` flag is needed. Start a new Claude Code session, or run `/reload-plugins` in an existing one. The status line should show `Guard active` with five-hour and weekly usage.
