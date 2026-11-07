@@ -42,7 +42,9 @@ Approval applies only to the one request waiting in that dialog. It does not cha
 
 ## What it checks
 
-The guard reads Claude Code's session usage and checks both the five-hour and seven-day rate limits. It blocks when either reaches 100%. If either limit is missing, or usage cannot be read, it treats usage as unknown and asks before proceeding. For requests on the covered path, the guard sends nothing until approved. Approving a request while usage is unknown may incur usage credits.
+The guard reads Claude Code's session usage and checks both the five-hour and seven-day rate limits. It blocks when either reaches 100%. Claude drops an expired window until a new request reports usage again. If the guard observed that window's reset time, it allows one refresh request after that time passes, provided the other window is known and below 100%. The status shows `reset` for that window. The refresh allowance is shared across concurrent requests and covered model APIs; subsequent missing readings require approval.
+
+Missing readings without an observed reset, malformed readings, completely empty usage snapshots, and usage read failures still require approval. Reset evidence is cleared when the session ends or the mod reloads, so an unknown window can still require approval after a restart. When a request requires approval, it is not sent until you approve it. Approving a request while usage is unknown may incur usage credits.
 
 The guard covers main and subagent `turn.step` model requests, plus the separate `model.complete`, `model.fork`, and `model.classify` plugin API calls. Background work may not be observed or stopped reliably. Concurrent work can outlive the usage reading used for a decision, and requests already sent cannot be recalled. Usage data may lag. Model calls made outside these intercepted Claude Code events are outside its coverage. This plugin cannot guarantee a zero-spend session or enforce a hard billing ceiling.
 

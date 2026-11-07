@@ -224,3 +224,166 @@ test('session measure updates status and display errors do not block lifecycle',
   await hooks['session.measure'](failingUi, { rateLimits: limits(55, 67).rateLimits }, async () => ({ ok: true }))
   expect(true).toBe(true)
 })
+
+function observeUsage(hooks, usage) {
+  return hooks['session.measure'](
+    { ui: { status: () => {} } },
+    { rateLimits: usage.rateLimits },
+    async () => ({}),
+  )
+}
+
+test('an observed five-hour reset allows one refresh request without approving credits', async () => {
+  const hooks = handlers()
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, expired))
+  let approvals = 0
+  const decide = () => { approvals += 1; return 'Stop' }
+  const first = await startTurnStep(hooks['turn.step'], limits(undefined, 45), decide).done
+  expect(first.calls).toBe(1)
+  expect(approvals).toBe(0)
+  const second = await startTurnStep(hooks['turn.step'], limits(undefined, 45), decide).done
+  expect(second.calls).toBe(0)
+  expect(approvals).toBe(1)
+})
+
+test('a five-hour reset still blocks an exhausted weekly limit', async () => {
+  const hooks = handlers()
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  await observeUsage(hooks, limits(100, 100, expired))
+  const run = startTurnStep(hooks['turn.step'], limits(undefined, 100), () => 'Stop')
+  const [{ question }, result] = await Promise.all([run.asked, run.done])
+  expect(result.calls).toBe(0)
+  expect(question).toContain('seven-day usage is at or above 100%')
+})
+
+test('missing usage before reset or without an observed reset stays blocked', async () => {
+  const future = new Date(Date.now() + 3_600_000).toISOString()
+  for (const reset of [undefined, future, 'not-a-date']) {
+    const hooks = handlers()
+    await observeUsage(hooks, limits(50, 45, reset))
+    const result = await startTurnStep(hooks['turn.step'], limits(undefined, 45), () => 'Stop').done
+    expect(result.calls).toBe(0)
+  }
+})
+
+test('reset evidence never treats empty snapshots or malformed present readings as zero', async () => {
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  for (const usage of [{ rateLimits: [] }, limits(Number.NaN, 45), limits(-1, 45)]) {
+    const hooks = handlers()
+    await observeUsage(hooks, limits(100, 45, expired))
+    const result = await startTurnStep(hooks['turn.step'], usage, () => 'Stop').done
+    expect(result.calls).toBe(0)
+  }
+})
+
+test('status labels an observed reset and recovers when a fresh zero reading arrives', async () => {
+  const hooks = handlers()
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  const future = new Date(Date.now() + 3_600_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, expired))
+  const shown = []
+  const $ = { ui: { status: text => shown.push(text) } }
+  await hooks['session.measure']($, { rateLimits: limits(undefined, 45).rateLimits }, async () => ({}))
+  expect(shown[0]).toBe('Guard active · 5h: reset · weekly: 45%')
+  await observeUsage(hooks, limits(0, 45, future))
+  const result = await startTurnStep(hooks['turn.step'], limits(0, 45, future), () => { throw new Error('must not ask') }).done
+  expect(result.calls).toBe(1)
+  const missing = await startTurnStep(hooks['turn.step'], limits(undefined, 45), () => 'Stop').done
+  expect(missing.calls).toBe(0)
+})
+
+test('all model API gates share the observed-reset refresh allowance', async () => {
+  const hooks = handlers()
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, expired))
+  const usage = limits(undefined, 45)
+  const first = await runModelApi(hooks['model.complete'], usage, () => { throw new Error('must not ask') })
+  expect(first.calls).toBe(1)
+  for (const event of ['model.fork', 'model.classify']) {
+    const result = await runModelApi(hooks[event], usage, () => 'Stop')
+    expect(result.calls).toBe(0)
+  }
+})
+
+
+test('concurrent requests cannot both use the same reset refresh', async () => {
+  const hooks = handlers()
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, expired))
+  let approvals = 0
+  const decide = () => { approvals += 1; return 'Stop' }
+  const a = startTurnStep(hooks['turn.step'], limits(undefined, 45), decide)
+  const b = startTurnStep(hooks['turn.step'], limits(undefined, 45), decide)
+  const results = await Promise.all([a.done, b.done])
+  expect(results[0].calls + results[1].calls).toBe(1)
+  expect(approvals).toBe(1)
+})
+
+test('reset evidence is discarded when the session ends', async () => {
+  const hooks = handlers()
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, expired))
+  await hooks['session.end']({}, { reason: 'logout' }, async () => ({}))
+  const result = await startTurnStep(hooks['turn.step'], limits(undefined, 45), () => 'Stop').done
+  expect(result.calls).toBe(0)
+})
+
+test('engine allows an observed-reset refresh through the guarded stream', async ($, on) => {
+  on('session.measure', ($, e) => ({ changed: e.changed }) as never)
+  on('ui.status', () => ({ value: undefined }) as never)
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  on('session.usage', () => ({ value: limits(undefined, 45) }) as never)
+  on('turn.start', () => ({ turnId: input.turnId }) as never)
+  let downstream = 0
+  on('turn.step', async function* () { downstream += 1; return fakeResult })
+  await $.session.measure({ context: {}, rateLimits: limits(100, 45, expired).rateLimits, changed: ['rateLimits'] } as never)
+  await $.turn.start({ text: 'reset integration', turnId: input.turnId } as never)
+  const stream = $.turn.step(input as never)
+  let result
+  while (true) {
+    const part = await stream.next()
+    if (part.done) { result = part.value; break }
+  }
+  expect(downstream).toBe(1)
+  expect(result.answer).toBe('test model result')
+})
+
+
+test('stale older reset timestamps cannot reopen a consumed refresh', async () => {
+  const hooks = handlers()
+  const older = new Date(Date.now() - 120_000).toISOString()
+  const newer = new Date(Date.now() - 60_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, newer))
+  expect((await startTurnStep(hooks['turn.step'], limits(undefined, 45), () => 'Stop').done).calls).toBe(1)
+  await observeUsage(hooks, limits(50, 45, older))
+  expect((await startTurnStep(hooks['turn.step'], limits(undefined, 45), () => 'Stop').done).calls).toBe(0)
+})
+
+test('malformed readings cannot erase the record of a consumed reset', async () => {
+  const hooks = handlers()
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, expired))
+  expect((await startTurnStep(hooks['turn.step'], limits(undefined, 45), () => 'Stop').done).calls).toBe(1)
+  await observeUsage(hooks, limits(Number.NaN, 45, expired))
+  await observeUsage(hooks, limits(50, 45, expired))
+  expect((await startTurnStep(hooks['turn.step'], limits(undefined, 45), () => 'Stop').done).calls).toBe(0)
+})
+
+test('an older healthy snapshot cannot replace a newer exhausted window', async () => {
+  const hooks = handlers()
+  const older = new Date(Date.now() - 60_000).toISOString()
+  const newer = new Date(Date.now() + 3_600_000).toISOString()
+  await observeUsage(hooks, limits(100, 45, newer))
+  expect((await startTurnStep(hooks['turn.step'], limits(0, 45, older), () => 'Stop').done).calls).toBe(0)
+})
+
+test('an observed weekly reset refreshes only when the five-hour window is healthy', async () => {
+  const expired = new Date(Date.now() - 60_000).toISOString()
+  const hooks = handlers()
+  await observeUsage(hooks, limits(20, 100, undefined, expired))
+  expect((await startTurnStep(hooks['turn.step'], limits(20), () => 'Stop').done).calls).toBe(1)
+  const exhausted = handlers()
+  await observeUsage(exhausted, limits(100, 100, undefined, expired))
+  expect((await startTurnStep(exhausted['turn.step'], limits(100), () => 'Stop').done).calls).toBe(0)
+})
