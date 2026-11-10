@@ -92,22 +92,13 @@ function usageStatus(rateLimits, observedResets) {
   return `limit · 5h ${display(fiveHour)} · week ${display(sevenDay)}${approvalRequired ? ' · approval required' : ''}`
 }
 
-const STATUS = { plugin: 'usage-credit-guard', key: 'status' }
-
 function showUsageStatus($, rateLimits, observedResets) {
   try {
-    const result = $.state.set(STATUS, usageStatus(rateLimits, observedResets))
+    // The prompt hint's tail is not drawn on every build; the status line always is.
+    const result = $.ui.status(usageStatus(rateLimits, observedResets))
     if (result && typeof result.catch === 'function') result.catch(() => {})
   } catch {
     // Display failures must not affect session lifecycle or request gates.
-  }
-}
-
-function clearStatusLine($) {
-  try {
-    $.ui.status(undefined)
-  } catch {
-    // An absent or failing status line must not affect session lifecycle.
   }
 }
 
@@ -141,7 +132,6 @@ export function register(on) {
   })
 
   on('session.start', async ($, e, next) => {
-    clearStatusLine($)
     await showInitialUsageStatus($, observedResets)
     return next(e)
   })
@@ -149,17 +139,6 @@ export function register(on) {
   on('session.measure', ($, e, next) => {
     showUsageStatus($, e.rateLimits, observedResets)
     return next(e)
-  })
-
-  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    let text
-    try {
-      ({ value: text } = await $.state.get(STATUS))
-    } catch {
-      return next(e)
-    }
-    if (typeof text !== 'string' || text.length === 0) return next(e)
-    return next({ ...e, tail: e.tail ? `${e.tail}  ${text}` : text })
   })
 
   on('turn.step', async function* ($, e, next) {
