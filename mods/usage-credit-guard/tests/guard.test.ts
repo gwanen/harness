@@ -55,8 +55,18 @@ async function runModelApi(handler, usage, answer, called = false) {
   return { calls, result, askArgs: $.askArgs }
 }
 
-function fakeUi(shown = []) {
-  return { shown, status: text => { shown.push(text) } }
+function fakeState(shown = []) {
+  let value
+  let version = 0
+  return {
+    shown,
+    get: async () => ({ value, version }),
+    set: async (ref, next) => { value = next; version += 1; shown.push(next); return { isSet: true, version } },
+  }
+}
+
+function fakeStatusLine(cleared = []) {
+  return { cleared, status: text => { cleared.push(text) } }
 }
 
 const limits = (fiveHour, sevenDay, fiveReset, sevenReset) => ({
@@ -182,47 +192,49 @@ test('Claude Code accepts a stopped turn.step without dispatching downstream', a
 
 test('session start shows current known usage persistently and continues lifecycle', async () => {
   const hooks = handlers()
-  const ui = fakeUi()
+  const state = fakeState()
+  const statusLine = fakeStatusLine()
   let continued = false
-  const $ = { session: { usage: async () => limits(42, 18) }, ui }
+  const $ = { session: { usage: async () => limits(42, 18) }, state, ui: statusLine }
   await hooks['session.start']($, {}, async () => { continued = true; return { ok: true } })
-  expect(ui.shown[0]).toBe('limit · 5h 42% · week 18%')
+  expect(statusLine.cleared[0]).toBe(undefined)
+  expect(state.shown[0]).toBe('limit · 5h 42% · week 18%')
   expect(continued).toBe(true)
 })
 
 test('status preserves a below-threshold decimal without claiming approval is required', async () => {
   const hooks = handlers()
-  const ui = fakeUi()
-  const $ = { session: { usage: async () => limits(99.9, 18) }, ui }
+  const state = fakeState()
+  const $ = { session: { usage: async () => limits(99.9, 18) }, state, ui: fakeStatusLine() }
   await hooks['session.start']($, {}, async () => ({}))
-  expect(ui.shown[0]).toBe('limit · 5h 99.9% · week 18%')
+  expect(state.shown[0]).toBe('limit · 5h 99.9% · week 18%')
 })
 
 test('session start shows unknown usage and approval requirement when usage fails', async () => {
   const hooks = handlers()
-  const ui = fakeUi()
-  const $ = { session: { usage: async () => { throw new Error('unavailable') } }, ui }
+  const state = fakeState()
+  const $ = { session: { usage: async () => { throw new Error('unavailable') } }, state, ui: fakeStatusLine() }
   await hooks['session.start']($, {}, async () => ({}))
-  expect(ui.shown[0]).toBe('limit · 5h ? · week ? · approval required')
+  expect(state.shown[0]).toBe('limit · 5h ? · week ? · approval required')
 })
 
 test('session measure updates status and display errors do not block lifecycle', async () => {
   const hooks = handlers()
-  const ui = fakeUi()
-  const $ = { ui }
+  const state = fakeState()
+  const $ = { state }
   let continued = false
   await hooks['session.measure']($, { rateLimits: limits(100, 30).rateLimits }, async () => { continued = true; return {} })
-  expect(ui.shown[0]).toBe('limit · 5h 100% · week 30% · approval required')
+  expect(state.shown[0]).toBe('limit · 5h 100% · week 30% · approval required')
   expect(continued).toBe(true)
 
-  const failingUi = { ui: { status: () => { throw new Error('display unavailable') } } }
+  const failingUi = { state: { set: () => Promise.reject(new Error('display unavailable')) } }
   await hooks['session.measure'](failingUi, { rateLimits: limits(55, 67).rateLimits }, async () => ({ ok: true }))
   expect(true).toBe(true)
 })
 
 function observeUsage(hooks, usage) {
   return hooks['session.measure'](
-    { ui: { status: () => {} } },
+    { state: { set: async () => ({ isSet: true, version: 1 }) } },
     { rateLimits: usage.rateLimits },
     async () => ({}),
   )
@@ -277,10 +289,10 @@ test('status labels an observed reset and recovers when a fresh zero reading arr
   const expired = new Date(Date.now() - 60_000).toISOString()
   const future = new Date(Date.now() + 3_600_000).toISOString()
   await observeUsage(hooks, limits(100, 45, expired))
-  const ui = fakeUi()
-  const $ = { ui }
+  const state = fakeState()
+  const $ = { state }
   await hooks['session.measure']($, { rateLimits: limits(undefined, 45).rateLimits }, async () => ({}))
-  expect(ui.shown[0]).toBe('limit · 5h reset · week 45%')
+  expect(state.shown[0]).toBe('limit · 5h reset · week 45%')
   await observeUsage(hooks, limits(0, 45, future))
   const result = await startTurnStep(hooks['turn.step'], limits(0, 45, future), () => { throw new Error('must not ask') }).done
   expect(result.calls).toBe(1)
@@ -326,6 +338,7 @@ test('reset evidence is discarded when the session ends', async () => {
 
 test('engine allows an observed-reset refresh through the guarded stream', async ($, on) => {
   on('session.measure', ($, e) => ({ changed: e.changed }) as never)
+  on('state.set', () => ({ value: { isSet: true, version: 1 } }) as never)
   const expired = new Date(Date.now() - 60_000).toISOString()
   on('session.usage', () => ({ value: limits(undefined, 45) }) as never)
   on('turn.start', () => ({ turnId: input.turnId }) as never)
@@ -380,4 +393,28 @@ test('an observed weekly reset refreshes only when the five-hour window is healt
   const exhausted = handlers()
   await observeUsage(exhausted, limits(100, 100, undefined, expired))
   expect((await startTurnStep(exhausted['turn.step'], limits(100), () => 'Stop').done).calls).toBe(0)
+})
+
+test('the prompt hint carries the usage line after the engine line', async () => {
+  const hooks = handlers()
+  const state = fakeState()
+  await hooks['session.measure']({ state }, { rateLimits: limits(60, 43).rateLimits }, async () => ({}))
+  let seen
+  const next = async e => { seen = e; return undefined }
+  await hooks['ui.render']({ state }, { surface: 'terminal', hint: '? for shortcuts' }, next)
+  expect(seen.tail).toBe('limit · 5h 60% · week 43%')
+  await hooks['ui.render']({ state }, { surface: 'terminal', hint: 'esc to interrupt', tail: 'other' }, next)
+  expect(seen.tail).toBe('other  limit · 5h 60% · week 43%')
+})
+
+test('the prompt hint is untouched when no usage line has been stored', async () => {
+  const hooks = handlers()
+  let seen
+  const next = async e => { seen = e; return undefined }
+  const empty = { get: async () => ({ value: undefined, version: 0 }) }
+  await hooks['ui.render']({ state: empty }, { surface: 'terminal', hint: '? for shortcuts' }, next)
+  expect(seen.tail).toBe(undefined)
+  const failing = { get: async () => { throw new Error('state unavailable') } }
+  await hooks['ui.render']({ state: failing }, { surface: 'terminal', hint: '? for shortcuts' }, next)
+  expect(seen.tail).toBe(undefined)
 })

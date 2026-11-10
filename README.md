@@ -10,7 +10,7 @@ Run this once in your terminal (Claude Code 2.1.292 or later):
 claude plugin marketplace add gwanen/harness && claude plugin install usage-credit-guard@harness --scope user
 ```
 
-Claude Code downloads the mod and enables it for your user across projects. No manual clone or `--plugin-dir` flag is needed. Start a new Claude Code session, or run `/reload-plugins` in an existing one. The status line under the prompt, beside the context bar, should show `limit` with five-hour and weekly usage.
+Claude Code downloads the mod and enables it for your user across projects. No manual clone or `--plugin-dir` flag is needed. Start a new Claude Code session, or run `/reload-plugins` in an existing one. The hint line under the prompt should end with `limit` and five-hour and weekly usage.
 
 Inside Claude Code, you can also run:
 
@@ -22,6 +22,6 @@ Choose **Install for you** in the plugin panel. For a separate profile such as `
 
 The command works once this marketplace manifest and the mod are merged into the repository's default branch. Repository access is required if the repository is private.
 
-This repository is a fork of [sultanfariz/harness](https://github.com/sultanfariz/harness); the `limit` entry in the status line is a change of this fork.
+This repository is a fork of [sultanfariz/harness](https://github.com/sultanfariz/harness); the `limit` text on the prompt hint line is a change of this fork.
 
 See [Usage Credit Guard](mods/usage-credit-guard/README.md) for approval behavior, updates, development setup, and billing limitations.
