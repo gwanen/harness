@@ -83,8 +83,6 @@ function resetReason(reason, relevant) {
   return resetTimes.length ? `${reason}; ${resetTimes.join('; ')}` : reason
 }
 
-const STATUS = { plugin: 'usage-credit-guard', key: 'status' }
-
 function usageStatus(rateLimits, observedResets) {
   const [fiveHour, sevenDay] = usageWindows(rateLimits, observedResets)
   const five = fiveHour?.percentUsed
@@ -96,7 +94,7 @@ function usageStatus(rateLimits, observedResets) {
 
 function showUsageStatus($, rateLimits, observedResets) {
   try {
-    const result = $.state.set(STATUS, usageStatus(rateLimits, observedResets))
+    const result = $.ui.status(usageStatus(rateLimits, observedResets))
     if (result && typeof result.catch === 'function') result.catch(() => {})
   } catch {
     // Display failures must not affect session lifecycle or request gates.
@@ -140,19 +138,6 @@ export function register(on) {
   on('session.measure', ($, e, next) => {
     showUsageStatus($, e.rateLimits, observedResets)
     return next(e)
-  })
-
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props?.hasSurvey) return next(e)
-    let text
-    try {
-      ({ value: text } = await $.state.get(STATUS))
-    } catch {
-      return next(e)
-    }
-    if (typeof text !== 'string' || text.length === 0) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
-    return h(Box, null, h(Text, { dimColor: true }, text))
   })
 
   on('turn.step', async function* ($, e, next) {

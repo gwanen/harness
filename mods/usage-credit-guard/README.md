@@ -50,7 +50,7 @@ The guard covers main and subagent `turn.step` model requests, plus the separate
 
 ## Usage status
 
-After startup, a dim line in the band directly above the prompt shows the latest reported five-hour and weekly usage. For example:
+After startup, the mod's status line entry under the prompt, beside the context bar, shows the latest reported five-hour and weekly usage. For example:
 
 ```text
 limit · 5h 0% · week 8%
@@ -60,7 +60,7 @@ The mod draws this line itself, so it carries no icon and no plugin-name prefix.
 
 ## Confirm the mod loaded
 
-In the interactive session, run `/plugin`. The header’s `mods active` line should include `usage-credit-guard`. The usage line above the prompt is also evidence that the mod loaded and its usage reading succeeded.
+In the interactive session, run `/plugin`. The header’s `mods active` line should include `usage-credit-guard`. The usage entry in the status line is also evidence that the mod loaded and its usage reading succeeded.
 
 To check whether the current CLI process can load mods without starting a session, run this from the `mods/` directory (which has no hooks module of its own):
 
