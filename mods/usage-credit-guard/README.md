@@ -50,17 +50,17 @@ The guard covers main and subagent `turn.step` model requests, plus the separate
 
 ## Usage status
 
-After startup, the status line under the prompt shows the latest reported five-hour and weekly usage. For example:
+After startup, a dim line in the band directly above the prompt shows the latest reported five-hour and weekly usage. For example:
 
 ```text
-⚠ usage-credit-guard: Guard active · 5h: 0% · weekly: 8%
+limit · 5h 0% · week 8%
 ```
 
-Values vary by account. An unknown reading appears as `?`; a reading at or above 100% adds `approval required`. The line updates at startup and when Claude Code reports a usage measurement, such as after a turn or a rate-limit percentage change. It is not a live poll.
+The mod draws this line itself, so it carries no icon and no plugin-name prefix. Values vary by account. An unknown reading appears as `?`; a reading at or above 100% adds `approval required`. The line updates at startup and when Claude Code reports a usage measurement, such as after a turn or a rate-limit percentage change. It is not a live poll. It yields the band while a survey holds it.
 
 ## Confirm the mod loaded
 
-In the interactive session, run `/plugin`. The header’s `mods active` line should include `usage-credit-guard`. The status line is also evidence that the mod loaded and its usage reading succeeded.
+In the interactive session, run `/plugin`. The header’s `mods active` line should include `usage-credit-guard`. The usage line above the prompt is also evidence that the mod loaded and its usage reading succeeded.
 
 To check whether the current CLI process can load mods without starting a session, run this from the `mods/` directory (which has no hooks module of its own):
 

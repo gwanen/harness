@@ -83,18 +83,20 @@ function resetReason(reason, relevant) {
   return resetTimes.length ? `${reason}; ${resetTimes.join('; ')}` : reason
 }
 
+const STATUS = { plugin: 'usage-credit-guard', key: 'status' }
+
 function usageStatus(rateLimits, observedResets) {
   const [fiveHour, sevenDay] = usageWindows(rateLimits, observedResets)
   const five = fiveHour?.percentUsed
   const seven = sevenDay?.percentUsed
   const display = limit => limit?.reset ? 'reset' : Number.isFinite(limit?.percentUsed) && limit.percentUsed >= 0 ? `${limit.percentUsed}%` : '?'
   const approvalRequired = !Number.isFinite(five) || five < 0 || !Number.isFinite(seven) || seven < 0 || five >= 100 || seven >= 100
-  return `Guard active · 5h: ${display(fiveHour)} · weekly: ${display(sevenDay)}${approvalRequired ? ' · approval required' : ''}`
+  return `limit · 5h ${display(fiveHour)} · week ${display(sevenDay)}${approvalRequired ? ' · approval required' : ''}`
 }
 
 function showUsageStatus($, rateLimits, observedResets) {
   try {
-    const result = $.ui.status(usageStatus(rateLimits, observedResets))
+    const result = $.state.set(STATUS, usageStatus(rateLimits, observedResets))
     if (result && typeof result.catch === 'function') result.catch(() => {})
   } catch {
     // Display failures must not affect session lifecycle or request gates.
@@ -138,6 +140,19 @@ export function register(on) {
   on('session.measure', ($, e, next) => {
     showUsageStatus($, e.rateLimits, observedResets)
     return next(e)
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props?.hasSurvey) return next(e)
+    let text
+    try {
+      ({ value: text } = await $.state.get(STATUS))
+    } catch {
+      return next(e)
+    }
+    if (typeof text !== 'string' || text.length === 0) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    return h(Box, null, h(Text, { dimColor: true }, text))
   })
 
   on('turn.step', async function* ($, e, next) {

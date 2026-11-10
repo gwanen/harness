@@ -10,7 +10,7 @@ Run this once in your terminal (Claude Code 2.1.292 or later):
 claude plugin marketplace add sultanfariz/harness && claude plugin install usage-credit-guard@harness --scope user
 ```
 
-Claude Code downloads the mod and enables it for your user across projects. No manual clone or `--plugin-dir` flag is needed. Start a new Claude Code session, or run `/reload-plugins` in an existing one. The status line should show `Guard active` with five-hour and weekly usage.
+Claude Code downloads the mod and enables it for your user across projects. No manual clone or `--plugin-dir` flag is needed. Start a new Claude Code session, or run `/reload-plugins` in an existing one. A dim line above the prompt should show `limit` with five-hour and weekly usage.
 
 Inside Claude Code, you can also run:
 
