@@ -1,9 +1,9 @@
 {
   "name": "harness",
   "owner": {
-    "name": "sultanfariz"
+    "name": "gwanen"
   },
-  "description": "Claude Code mods from sultanfariz.",
+  "description": "Claude Code mods, forked from sultanfariz/harness.",
   "plugins": [
     {
       "name": "usage-credit-guard",
